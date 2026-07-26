@@ -1,0 +1,8 @@
+# Never commit captured media, session data, or PII
+*
+!.gitkeep
+!.gitignore
+!demo/
+demo/*
+!demo/.gitkeep
+!demo/job.json.example

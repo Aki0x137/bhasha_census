@@ -1,8 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "kyc-bot"
+name = "bhasaha-census"
 version = "0.1.0"
-description = "Open-source zero-infra KYC identity proofing over chat"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11"
+description = "KYC/Census automation MVP via Telegram and AI agents"
+license = { text = "MIT" }
 dependencies = [
     "python-telegram-bot==21.6",
     "cryptography==43.0.1",
@@ -10,22 +15,19 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest==8.3.3",
-    "pytest-asyncio==0.24.0",
-    "ruff==0.6.9",
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.24,<1",
+    "ruff>=0.6,<1",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
 [tool.setuptools.packages.find]
-include = ["kyc_bot*"]
+include = ["apps*", "services*", "shared*", "kyc_bot*"]
