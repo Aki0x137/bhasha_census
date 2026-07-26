@@ -5,6 +5,7 @@ description = "Open-source zero-infra KYC identity proofing over chat"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     "python-telegram-bot==21.6",
+    "cryptography==43.0.1",
 ]
 
 [project.optional-dependencies]
