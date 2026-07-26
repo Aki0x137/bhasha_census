@@ -32,7 +32,15 @@ def liveness_page() -> FileResponse:
     if not html.exists():
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="liveness.html not found")
-    return FileResponse(str(html), media_type="text/html")
+    return FileResponse(
+        str(html),
+        media_type="text/html",
+        headers={
+            # Allow getUserMedia when opened via tunnel / Mini App WebView
+            "Permissions-Policy": "camera=(self), microphone=()",
+            "Feature-Policy": "camera 'self'",
+        },
+    )
 
 
 @app.on_event("startup")

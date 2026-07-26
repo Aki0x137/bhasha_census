@@ -8,6 +8,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Permissions-Policy" content="camera=(self), microphone=()" />
   <title>Liveness Check – Bhasaha Census</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
@@ -182,6 +183,13 @@
       display: none;
     }
     #btn-retake:hover { border-color: var(--accent); color: var(--accent); }
+
+    #btn-upload {
+      background: var(--surface);
+      color: var(--text);
+      border: 2px solid var(--border);
+    }
+    #btn-upload:hover { border-color: var(--accent); color: var(--accent); }
 
     /* Status pill */
     #status {
@@ -365,12 +373,14 @@
 <!-- Captured frame thumbnails -->
 <div class="frame-thumb-row" id="frame-thumbs"></div>
 
-<p id="status">Pick a challenge, then press Start.</p>
+<p id="status">Pick a challenge, then Start — or Upload photos if camera is blocked.</p>
 
 <div class="btn-row">
   <button id="btn-start">▶ Start Challenge</button>
+  <button id="btn-upload" type="button">📁 Upload photos</button>
   <button id="btn-retake">↺ Retake</button>
 </div>
+<input id="file-input" type="file" accept="image/*" multiple capture="user" style="display:none" />
 
 <!-- Results -->
 <div id="results"></div>
@@ -379,6 +389,11 @@
   // ── Telegram Mini App init ──────────────────────────────────────────────
   const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
+
+  // ── URL params (injected by bot) ────────────────────────────────────────
+  const _params     = new URLSearchParams(window.location.search);
+  const _sessionId  = _params.get('session_id') || '';
+  const _chatId     = _params.get('chat_id')    || '';
 
   // ── State ───────────────────────────────────────────────────────────────
   const CHALLENGES = {
@@ -410,6 +425,8 @@
   const statusEl    = document.getElementById('status');
   const btnStart    = document.getElementById('btn-start');
   const btnRetake   = document.getElementById('btn-retake');
+  const btnUpload   = document.getElementById('btn-upload');
+  const fileInput   = document.getElementById('file-input');
   const thumbRow    = document.getElementById('frame-thumbs');
   const resultsDiv  = document.getElementById('results');
 
@@ -424,6 +441,16 @@
 
   // ── Camera helpers ──────────────────────────────────────────────────────
   async function startCamera() {
+    if (!window.isSecureContext) {
+      throw new Error(
+        'Camera needs HTTPS (or localhost). Open the tunnel URL, not plain http://.'
+      );
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error(
+        'Camera API unavailable in this WebView. Use Upload photos, or open in Chrome/Safari.'
+      );
+    }
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
       audio: false,
@@ -452,21 +479,26 @@
     });
   }
 
-  // ── Main challenge flow ─────────────────────────────────────────────────
-  btnStart.addEventListener('click', runChallenge);
-  btnRetake.addEventListener('click', () => {
+  function resetUi() {
     resultsDiv.style.display = 'none';
     resultsDiv.innerHTML = '';
     thumbRow.innerHTML = '';
     capturedBlobs = [];
     btnRetake.style.display = 'none';
     btnStart.disabled = false;
-    statusEl.textContent = 'Pick a challenge, then press Start.';
+    btnUpload.disabled = false;
+    statusEl.textContent = 'Pick a challenge, then Start — or Upload photos if camera is blocked.';
     placeholder.style.display = 'flex';
     overlay.style.display = 'none';
     document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = '');
     stopCamera();
-  });
+  }
+
+  // ── Main challenge flow ─────────────────────────────────────────────────
+  btnStart.addEventListener('click', runChallenge);
+  btnRetake.addEventListener('click', resetUi);
+  btnUpload.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', onFilesChosen);
 
   async function runChallenge() {
     const cfg = CHALLENGES[selectedChallenge];
@@ -478,11 +510,24 @@
     resultsDiv.innerHTML = '';
 
     statusEl.textContent = 'Opening camera…';
+    btnUpload.disabled = true;
     try {
       await startCamera();
     } catch (err) {
-      statusEl.textContent = '⚠ Camera error: ' + err.message;
+      const name = err?.name || '';
+      let hint = err.message || String(err);
+      if (name === 'NotAllowedError' || /not allowed|Permission|denied/i.test(hint)) {
+        hint =
+          'Camera blocked here. Use “Upload photos”, or open this page in Chrome/Safari ' +
+          '(not Telegram Desktop WebView).';
+      } else if (name === 'NotFoundError') {
+        hint = 'No camera found. Use “Upload photos” instead.';
+      } else if (name === 'NotReadableError') {
+        hint = 'Camera is busy (close Zoom/Meet), then retry — or use Upload photos.';
+      }
+      statusEl.textContent = '⚠ ' + hint;
       btnStart.disabled = false;
+      btnUpload.disabled = false;
       document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = '');
       return;
     }
@@ -526,6 +571,31 @@
     await submitFrames();
   }
 
+  async function onFilesChosen(ev) {
+    const files = Array.from(ev.target.files || []).slice(0, 6);
+    fileInput.value = '';
+    if (!files.length) return;
+
+    btnStart.disabled = true;
+    btnUpload.disabled = true;
+    document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = 'none');
+    capturedBlobs = [];
+    thumbRow.innerHTML = '';
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+    placeholder.style.display = 'none';
+    stopCamera();
+
+    statusEl.textContent = `Reading ${files.length} photo(s)…`;
+    for (let i = 0; i < files.length; i++) {
+      const blob = files[i];
+      capturedBlobs.push(blob);
+      addThumb(blob, i);
+    }
+    statusEl.textContent = `Analysing ${capturedBlobs.length} frames…`;
+    await submitFrames();
+  }
+
   function addThumb(blob, idx) {
     const url = URL.createObjectURL(blob);
     const img = document.createElement('img');
@@ -539,6 +609,8 @@
   async function submitFrames() {
     const fd = new FormData();
     fd.append('challenge_type', selectedChallenge);
+    if (_sessionId) fd.append('session_id', _sessionId);
+    if (_chatId)    fd.append('chat_id',    _chatId);
     capturedBlobs.forEach((blob, i) => {
       fd.append('frames', blob, `frame_${String(i).padStart(2,'0')}.jpg`);
     });
@@ -550,17 +622,20 @@
         const err = await resp.text();
         statusEl.textContent = `⚠ Server error (${resp.status}): ${err.slice(0, 120)}`;
         btnRetake.style.display = 'inline-block';
+        btnUpload.disabled = false;
         return;
       }
       data = await resp.json();
     } catch (err) {
       statusEl.textContent = '⚠ Network error: ' + err.message;
       btnRetake.style.display = 'inline-block';
+      btnUpload.disabled = false;
       return;
     }
 
     statusEl.textContent = '';
     btnRetake.style.display = 'inline-block';
+    btnUpload.disabled = false;
     renderResults(data);
 
     // Telegram Mini App: send result back to bot

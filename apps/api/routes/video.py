@@ -54,12 +54,16 @@ def verify(job: VerificationJob) -> VideoEvidence:
 async def verify_live(
     challenge_type: str = Form("LOOK_LEFT_RIGHT"),
     session_id: str = Form(None),
+    chat_id: str = Form(None),
     frames: List[UploadFile] = File(...),
 ) -> JSONResponse:
     """Accept webcam frames from the browser liveness page and run the full plugin pipeline.
 
     Frames are JPEG/PNG images captured at ~1 fps during the challenge window.
-    Returns the full VideoEvidence JSON so the page can render scores + reason codes.
+    After running the pipeline:
+      - Evidence is persisted to the evidence directory as JSON
+      - The enrollment session (if session_id is a known sess_* id) is updated
+      - If chat_id is provided, the result is pushed back to the Telegram chat
     """
     if not frames:
         raise HTTPException(status_code=422, detail="At least one frame is required")
@@ -81,7 +85,7 @@ async def verify_live(
         tmp_dir = Path(tmp)
         media_refs: list[MediaRef] = []
 
-        for i, upload in enumerate(frames[:10]):  # cap at 10 frames
+        for i, upload in enumerate(frames[:10]):
             suffix = Path(upload.filename or "frame.jpg").suffix or ".jpg"
             dest = tmp_dir / f"frame_{i:02d}{suffix}"
             dest.write_bytes(await upload.read())
@@ -121,4 +125,94 @@ async def verify_live(
                 detail={"detail": "pipeline_error", "job_id": job_id, "error": str(exc)},
             ) from exc
 
+    # ── Persist evidence to disk ────────────────────────────────────────────
+    _persist_evidence(evidence)
+
+    # ── Update enrollment session in DB ────────────────────────────────────
+    if sess_id.startswith("sess_"):
+        _update_session(sess_id, evidence)
+
+    # ── Notify Telegram chat with result ───────────────────────────────────
+    if chat_id:
+        await _notify_telegram(chat_id, evidence, ct)
+
     return JSONResponse(content=evidence.model_dump())
+
+
+def _persist_evidence(evidence) -> None:
+    """Save VideoEvidence JSON to evidence/<session_id>/video/<evidence_id>.json."""
+    import json
+    from shared.utils.evidence_paths import session_video_dir
+    try:
+        out_dir = session_video_dir(evidence.session_id)
+        out_path = out_dir / f"{evidence.evidence_id}.json"
+        out_path.write_text(json.dumps(evidence.model_dump(), indent=2))
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("evidence_persist_failed: %s", exc)
+
+
+def _update_session(session_id: str, evidence) -> None:
+    """Mark the temp verify challenge complete and store evidence_id on session."""
+    try:
+        from apps.api.db.session_store import get_session, update_session
+        from shared.schemas.common import SessionStatus
+        sess = get_session(session_id)
+        if not sess:
+            return
+        if evidence.evidence_id not in sess.evidence_ids:
+            sess.evidence_ids.append(evidence.evidence_id)
+        # Mark the challenge item done
+        for item in sess.challenge_plan:
+            if not item.completed:
+                item.completed = True
+                item.outcome = "passed" if not evidence.scores.hard_fail_hint else "failed"
+                break
+        # Advance status if all challenges done
+        if all(i.completed for i in sess.challenge_plan):
+            sess.status = SessionStatus.EVIDENCE_AGGREGATED
+        update_session(sess)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("session_update_failed: %s", exc)
+
+
+async def _notify_telegram(chat_id: str, evidence, ct: ChallengeType) -> None:
+    """Push liveness result back to the Telegram chat via Bot API."""
+    import os
+    import httpx
+
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        return
+
+    s = evidence.scores
+    outcome = "✅ *PASSED*" if not s.hard_fail_hint else "❌ *FAILED*"
+    reasons = ", ".join(evidence.reason_codes) or "—"
+    plugins_ok  = sum(1 for p in evidence.plugin_results if p.ok)
+    plugins_all = len(evidence.plugin_results)
+
+    text = (
+        f"🎥 *Liveness Check Result* — {ct.value}\n\n"
+        f"Verdict: {outcome}\n\n"
+        f"• Face detected: `{'yes' if s.face_present else 'no'}` (count: `{s.face_count}`)\n"
+        f"• Quality: `{s.quality_score:.0%}`\n"
+        f"• Spoof risk: `{s.spoof_score:.0%}`\n"
+        + (f"• Pose match: `{s.pose_match_score:.0%}`\n" if s.pose_match_score is not None else "")
+        + f"• Plugins: `{plugins_ok}/{plugins_all}` OK\n"
+        f"• Reasons: `{reasons}`\n\n"
+        f"evidence\\_id: `{evidence.evidence_id}`\n\n"
+        + ("✅ Liveness passed! Type */done* to get your enrollment verdict."
+           if not s.hard_fail_hint
+           else "❌ Liveness failed. Go back to the browser page and retry, or type */done* to proceed anyway.")
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("telegram_notify_failed: %s", exc)

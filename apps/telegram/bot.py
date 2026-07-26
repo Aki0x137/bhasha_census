@@ -45,6 +45,7 @@ def build_app() -> Application:
 async def _text_router(update, context):
     from apps.api.db.session_store import get_session
     from shared.schemas.common import SessionStatus
+    from apps.telegram.handlers.liveness_prompt import send_liveness_prompt
 
     session_id = context.user_data.get("session_id")
     if not session_id:
@@ -57,6 +58,13 @@ async def _text_router(update, context):
         await consent_response_handler(update, context)
     elif sess.status == SessionStatus.CENSUS_IN_PROGRESS:
         await census_answer_handler(update, context)
+    elif sess.status in (SessionStatus.CHALLENGE_RUNNING, SessionStatus.CENSUS_COMPLETE):
+        # Re-send liveness URL if user texts while challenge is pending
+        await send_liveness_prompt(update, context, sess)
+    elif sess.status == SessionStatus.EVIDENCE_AGGREGATED:
+        await update.message.reply_text(
+            "✅ Liveness check recorded!\n\nType /done to get your final enrollment verdict."
+        )
     else:
         await update.message.reply_text("Use /done when you're ready to receive your verdict.")
 

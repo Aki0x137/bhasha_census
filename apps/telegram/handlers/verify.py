@@ -13,7 +13,7 @@ import os
 import time
 import uuid
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from apps.api.db.session_store import (
@@ -37,13 +37,12 @@ _CHALLENGES = {
 }
 
 
-def _liveness_url(session_id: str) -> str | None:
-    """Return the public liveness URL if WEBAPP_URL is configured, else localhost."""
+def _liveness_url(session_id: str, chat_id: int | str) -> str:
+    """Return the liveness page URL with session and chat context embedded."""
     base = os.environ.get("WEBAPP_URL", "").rstrip("/")
     if not base:
-        # Local fallback — only works if the user is on the same machine
         base = "http://localhost:8000"
-    return f"{base}/liveness?session_id={session_id}"
+    return f"{base}/liveness?session_id={session_id}&chat_id={chat_id}"
 
 
 async def verify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -83,7 +82,8 @@ async def verify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data["temp_verify"] = True
     context.user_data.pop(f"attempts_{challenge_id}", None)
 
-    liveness_url = _liveness_url(sess.session_id)
+    chat_id = update.effective_chat.id
+    liveness_url = _liveness_url(sess.session_id, chat_id)
     webapp_url = os.environ.get("WEBAPP_URL", "").rstrip("/")
 
     intro = (
@@ -96,31 +96,30 @@ async def verify_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         "• Pose / blink / mouth-movement plugins\n\n"
     )
 
-    if webapp_url:
-        # Send as a Telegram Mini App button (opens in WebView)
+    # Always open in the system browser (url=), NOT as a Telegram Mini App (web_app=).
+    # Desktop Telegram WebView blocks getUserMedia; Chrome/Safari do not.
+    if webapp_url.startswith("https://"):
         keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton(
-                "🎥 Open Liveness Check",
-                web_app=WebAppInfo(url=liveness_url),
-            )
+            InlineKeyboardButton("🌐 Open Liveness in Browser", url=liveness_url),
         ]])
         await update.message.reply_text(
-            intro + f"`Session: {sess.session_id}`",
+            intro
+            + "Tap the button to open Chrome/Safari (not Telegram's built-in WebView).\n"
+            + "Allow camera when prompted.\n\n"
+            + f"`Session: {sess.session_id}`",
             parse_mode="Markdown",
             reply_markup=keyboard,
         )
     else:
-        # No tunnel → give a clickable URL and photo fallback
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🌐 Open in Browser", url=liveness_url)
-        ]])
+        # Localhost / non-HTTPS — Telegram rejects url= buttons for these.
         await update.message.reply_text(
             intro
-            + f"Open this URL in your browser for the full webcam challenge:\n`{liveness_url}`\n\n"
-            "Or send a photo/video here for a quick static-frame analysis.\n\n"
+            + "Open this URL in *Chrome or Safari* (not Telegram):\n"
+            f"{liveness_url}\n\n"
+            "If camera is blocked, use *Upload photo* on that page, "
+            "or send a photo/video here.\n\n"
             f"`Session: {sess.session_id}`",
             parse_mode="Markdown",
-            reply_markup=keyboard,
         )
 
     logger.info("temp_verify_started", session_id=sess.session_id, user_ref=user_ref, url=liveness_url)

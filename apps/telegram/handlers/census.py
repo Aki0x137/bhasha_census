@@ -61,12 +61,14 @@ async def census_answer_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if context.user_data.get("awaiting_confirmation"):
         text = (update.message.text or "").strip().lower()
         if text in {"confirm", "yes", "haan", "हाँ", "पुष्टि"}:
-            sess.status = SessionStatus.CENSUS_COMPLETE
             sess.challenge_plan = generate_challenge_plan(sess.session_id)
+            sess.status = SessionStatus.CHALLENGE_RUNNING
             update_session(sess)
             context.user_data.pop("awaiting_confirmation", None)
             await update.message.reply_text(get_message("profile_confirmed", locale))
             logger.info("census_complete", session_id=session_id)
+            from apps.telegram.handlers.liveness_prompt import send_liveness_prompt
+            await send_liveness_prompt(update, context, sess)
         else:
             # Restart census
             sess.census_profile = CensusProfile()

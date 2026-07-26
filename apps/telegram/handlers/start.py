@@ -23,10 +23,18 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     existing = get_active_session_for_user(user_ref)
     if existing:
-        await update.message.reply_text(get_message("session_resumed", locale))
-        logger.info("session_resumed", session_id=existing.session_id, user_ref=user_ref)
         context.user_data["session_id"] = existing.session_id
         context.user_data["locale"] = locale
+        await update.message.reply_text(get_message("session_resumed", locale))
+        logger.info("session_resumed", session_id=existing.session_id, user_ref=user_ref)
+        # Re-prompt based on where the user left off
+        from apps.telegram.handlers.liveness_prompt import send_liveness_prompt
+        if existing.status in (SessionStatus.CHALLENGE_RUNNING, SessionStatus.CENSUS_COMPLETE):
+            await send_liveness_prompt(update, context, existing)
+        elif existing.status == SessionStatus.EVIDENCE_AGGREGATED:
+            await update.message.reply_text(
+                "✅ Liveness check recorded! Type /done to get your final enrollment verdict."
+            )
         return
 
     session = EnrollmentSession(
