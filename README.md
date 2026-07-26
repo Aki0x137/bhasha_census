@@ -24,3 +24,4 @@ local video workers, SQLite + filesystem evidence.
 4. Message the bot: `/start` shows buttons; sending a photo/video/document
    replies with the byte count; any text is echoed. This exercises the whole
    `MessagingChannel` surface (send_text, send_prompt, download).
+
