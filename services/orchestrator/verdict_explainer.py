@@ -15,8 +15,11 @@ from shared.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-_BEDROCK_MODEL = "amazon.nova-lite-v1:0"
-_REGION = os.getenv("AWS_DEFAULT_REGION", "ap-south-1")
+# Use the configured model. In ap-south-1 the plain on-demand id
+# (amazon.nova-lite-v1:0) raises ValidationException — the APAC inference profile
+# (apac.amazon.nova-*) is required, which is what .env / BEDROCK_MODEL_ID carries.
+_BEDROCK_MODEL = os.getenv("BEDROCK_MODEL_ID") or "apac.amazon.nova-lite-v1:0"
+_REGION = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "ap-south-1"
 
 
 def _build_prompt(decision: EnrollmentDecision, bundle: EvidenceBundle) -> str:
@@ -58,8 +61,11 @@ def _fake_explain(decision: EnrollmentDecision) -> dict:
 
 def explain_verdict(decision: EnrollmentDecision, bundle: EvidenceBundle) -> dict:
     """Return a structured explanation dict {summary, reasons}."""
-    if not os.getenv("AWS_ACCESS_KEY_ID"):
-        logger.warning("bedrock_fake_mode", reason="AWS credentials not set")
+    # Bedrock is reachable via either traditional IAM keys or a Bedrock bearer
+    # token (AWS_BEARER_TOKEN_BEDROCK, picked up automatically by boto3). Gating
+    # only on AWS_ACCESS_KEY_ID silently forced fake mode for bearer-token setups.
+    if not (os.getenv("AWS_ACCESS_KEY_ID") or os.getenv("AWS_BEARER_TOKEN_BEDROCK")):
+        logger.warning("bedrock_fake_mode", reason="no AWS credentials or bearer token set")
         return _fake_explain(decision)
 
     try:
