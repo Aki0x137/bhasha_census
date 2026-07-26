@@ -73,19 +73,19 @@ class SarvamDocProvider(DocProvider):
         # missing extra never breaks imports for the Fake path.
         import httpx
 
-        headers = {"api-subscription-key": self._key}
+        headers = {"api-subscription-key": self._key, "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=30.0) as client:
+            # Verified contract (2026-07-26): 202 -> {job_id, storage_container_type, job_state}.
             resp = await client.post(
                 f"{SARVAM_BASE}/doc-digitization/job/v1",
-                headers={**headers, "Content-Type": "application/json"},
-                json={"language": "en-IN", "output_format": "json"},
+                headers=headers,
+                json={"job_parameters": {"language": "en-IN", "output_format": "md"}},
             )
             resp.raise_for_status()
-            # NOTE: the digitization job is async (job_id -> upload -> poll -> zip).
-            # Verify the upload/poll steps against your account before relying on this
-            # in the demo; until then the except-branch above keeps things running.
-            data = resp.json()
-            fields = data.get("detected_fields") or {}
-            name = fields.get("name") or self._fallback._name
-            number = fields.get("id_number") or self._fallback._id
-            return OcrResult(name=name, id_number=number, quality=float(data.get("quality", 0.9)))
+            job_id = resp.json().get("job_id")
+        # The job is async: the image must be uploaded to the returned storage
+        # container, the job polled to Completed, then the .md downloaded + parsed.
+        # That upload/poll/parse round-trip is not wired (and is not demo-safe live),
+        # so we fall back to the sample extraction while keeping the real call above.
+        log.info("Sarvam Doc-AI job accepted (%s); upload/poll not wired — using sample.", job_id)
+        return await self._fallback.digitize(image)

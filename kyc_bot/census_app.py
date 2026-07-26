@@ -59,11 +59,14 @@ def _load_dotenv(path: str = ".env") -> None:
 
 
 def _doc_provider():
+    # Default to the reliable sample OCR for the live demo. Set DOC_PROVIDER=sarvam
+    # (with SARVAM_API_KEY) to attempt the real Doc-AI job (falls back on any error).
+    mode = os.getenv("DOC_PROVIDER", "fake").lower()
     key = os.getenv("SARVAM_API_KEY")
-    if key:
-        log.info("Using Sarvam Doc-AI for OCR (with Fake fallback).")
+    if mode == "sarvam" and key:
+        log.info("OCR: Sarvam Doc-AI (with sample fallback).")
         return SarvamDocProvider(key)
-    log.info("No SARVAM_API_KEY set — using FakeDocProvider (offline).")
+    log.info("OCR: FakeDocProvider (sample, offline, deterministic).")
     return FakeDocProvider()
 
 

@@ -118,7 +118,8 @@ class QuestionnaireEngine:
                 head.id_confirmed = True
 
         elif q.qtype == "webapp":
-            session.record.head.liveness = text or "completed"
+            # any input here (Continue tap or a Mini App result) completes the step
+            session.record.head.liveness = "completed"
 
         # advance to the next question
         session.idx += 1
