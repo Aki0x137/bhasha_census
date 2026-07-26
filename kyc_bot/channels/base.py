@@ -37,3 +37,29 @@ class PromptButton:
     token the flow matches on when the user taps it."""
     label: str
     value: str
+
+
+class MessagingChannel(ABC):
+    """Everything the KYC flow needs from a chat platform.
+
+    Inbound messages are delivered by the concrete channel (e.g. via a
+    handler registered on the platform SDK) as normalized IncomingMessage
+    objects; how they reach the flow is the channel's concern. The methods
+    below are what the flow calls outbound. A concrete channel must implement
+    all three."""
+
+    @abstractmethod
+    async def send_text(self, user_id: str, text: str) -> None:
+        """Send a plain text message to the user."""
+
+    @abstractmethod
+    async def send_prompt(
+        self, user_id: str, text: str, buttons: list[PromptButton]
+    ) -> None:
+        """Send `text` with a set of tappable buttons. When the user taps
+        one, the channel delivers an IncomingMessage whose `text` equals the
+        chosen button's `value`."""
+
+    @abstractmethod
+    async def download(self, attachment: Attachment) -> bytes:
+        """Fetch the raw bytes for a previously received attachment."""
