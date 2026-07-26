@@ -1,4 +1,22 @@
-from kyc_bot.verification.ocr import FakeDocProvider, mask_id, name_similarity
+from kyc_bot.verification.ocr import (
+    FakeDocProvider,
+    _parse_card,
+    mask_id,
+    name_similarity,
+)
+
+
+def test_parse_card_extracts_name_and_id():
+    md = "CENSUS DEMO\n\nName: Khushal Vyas\n\nID Number: 1234 5678 9012\n"
+    r = _parse_card(md)
+    assert r.name == "Khushal Vyas"
+    assert r.id_number == "123456789012"
+
+
+def test_parse_card_missing_fields_is_safe():
+    r = _parse_card("some text with no labelled fields")
+    assert r.name == "Unknown"
+    assert r.id_number == "0000"
 
 
 def test_mask_id_keeps_only_last_four():
