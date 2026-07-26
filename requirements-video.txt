@@ -1,0 +1,9 @@
+# Video intelligence worker dependencies
+opencv-python-headless>=4.9,<5
+mediapipe>=0.10,<1
+numpy>=1.26,<3
+
+# Shared (also in requirements.txt — repeat for isolated installs)
+pydantic>=2.7,<3
+temporalio>=1.7,<2
+structlog>=24,<25

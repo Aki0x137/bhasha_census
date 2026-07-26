@@ -220,7 +220,19 @@ __marimo__/
 # KYC bot — never commit secrets, keys, or captured PII
 *.key
 KYC_MASTER_KEY*
+api-keys.md
 vault/
 data/
 *.sqlite
 *.sqlite3
+
+# Bhasaha Census MVP additions
+evidence/**
+!evidence/.gitkeep
+!evidence/.gitignore
+!evidence/demo/
+!evidence/demo/.gitkeep
+!evidence/demo/job.json.example
+.env*
+!.env.example
+
