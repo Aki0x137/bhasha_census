@@ -118,8 +118,9 @@ class QuestionnaireEngine:
                 head.id_confirmed = True
 
         elif q.qtype == "webapp":
-            # any input here (Continue tap or a Mini App result) completes the step
-            session.record.head.liveness = "completed"
+            # The liveness check is SUBMITTED for admin review — not auto-"completed".
+            # An admin accepts it (record approval) after viewing the evidence.
+            session.record.head.liveness = "submitted"
 
         # advance to the next question
         session.idx += 1

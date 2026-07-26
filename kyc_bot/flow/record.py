@@ -34,7 +34,12 @@ class CensusRecord:
     head: Person = field(default_factory=Person)
 
     def needs_review(self) -> bool:
-        """True when a human should reconcile the record (name mismatch not yet
-        confirmed). This is surfaced, never used to auto-reject anyone."""
+        """True when a human should reconcile the record. Surfaced, never used to
+        auto-reject. Flags on either: (a) the card name doesn't match the typed
+        name (and wasn't confirmed), or (b) the liveness check isn't a clean pass."""
         h = self.head
-        return h.id_name_match is not None and h.id_name_match < 0.7 and not h.id_confirmed
+        name_mismatch = (
+            h.id_name_match is not None and h.id_name_match < 0.7 and not h.id_confirmed
+        )
+        liveness_ok = h.liveness in ("submitted", "passed", "accepted")
+        return name_mismatch or not liveness_ok
