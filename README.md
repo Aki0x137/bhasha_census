@@ -38,6 +38,16 @@ curl -X POST http://localhost:8000/video/verify \
   -d @evidence/demo/job.json.example | python3 -m json.tool
 ```
 
+## Telegram channel layer (echo smoke test)
+
+Exercises the `MessagingChannel` surface (`send_text`, `send_prompt`, `download`):
+
+```bash
+TELEGRAM_BOT_TOKEN=<your-token> python -m kyc_bot.channels.telegram_app
+```
+
+Message the bot: `/start` shows buttons; photo/video/document replies with byte count; text is echoed.
+
 ## Run unit tests
 
 ```bash
@@ -50,6 +60,8 @@ pytest -q
 apps/
   api/              FastAPI app, session DB, video routes
   telegram/         Bot, handlers, i18n (EN + HI)
+kyc_bot/
+  channels/         MessagingChannel abstraction + Telegram adapter
 services/
   video/            Pluggable pipeline, 9 default plugins, Temporal activity
   speech/           Sarvam STT adapter + phrase verifier
