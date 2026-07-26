@@ -3,7 +3,14 @@ from __future__ import annotations
 
 from typing import Optional
 
-from kyc_bot.channels.base import Attachment, IncomingMessage
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+
+from kyc_bot.channels.base import (
+    Attachment,
+    IncomingMessage,
+    MessagingChannel,
+    PromptButton,
+)
 
 
 def normalize_update(update) -> Optional[IncomingMessage]:
@@ -53,3 +60,30 @@ def normalize_update(update) -> Optional[IncomingMessage]:
         return IncomingMessage(user_id=user_id, text=message.text)
 
     return None
+
+
+class TelegramChannel(MessagingChannel):
+    """MessagingChannel backed by a python-telegram-bot Bot.
+
+    The Bot is injected so tests can pass a mock and production can pass a
+    real Bot built from a token. Inbound updates are normalized elsewhere via
+    normalize_update; this class covers the outbound surface + downloads.
+    """
+
+    def __init__(self, bot: Bot):
+        self._bot = bot
+
+    async def send_text(self, user_id: str, text: str) -> None:
+        await self._bot.send_message(chat_id=int(user_id), text=text)
+
+    async def send_prompt(
+        self, user_id: str, text: str, buttons: list[PromptButton]
+    ) -> None:
+        row = [InlineKeyboardButton(b.label, callback_data=b.value) for b in buttons]
+        markup = InlineKeyboardMarkup([row])
+        await self._bot.send_message(chat_id=int(user_id), text=text, reply_markup=markup)
+
+    async def download(self, attachment: Attachment) -> bytes:
+        tg_file = await self._bot.get_file(attachment.file_id)
+        data = await tg_file.download_as_bytearray()
+        return bytes(data)
