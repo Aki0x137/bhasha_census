@@ -25,3 +25,23 @@ local video workers, SQLite + filesystem evidence.
    replies with the byte count; any text is echoed. This exercises the whole
    `MessagingChannel` surface (send_text, send_prompt, download).
 
+## Run the SIR registration bot
+
+1. Create a bot with @BotFather and copy the token.
+2. Generate an encryption key:
+
+   ```bash
+   .venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+
+3. Run:
+
+   ```bash
+   TELEGRAM_BOT_TOKEN=<token> KYC_MASTER_KEY=<key> .venv/bin/python -m kyc_bot.app
+   ```
+
+4. In Telegram, send `/start`, tap **Register for SIR**, answer the four
+   prompts (name, EPIC number, DOB, address), then upload a photo of your
+   EPIC card. The bot replies with a submission reference. Data is stored
+   encrypted under `./data` (override with `KYC_DATA_DIR`).
+
