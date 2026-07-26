@@ -14,9 +14,15 @@ def test_parse_card_extracts_name_and_id():
 
 
 def test_parse_card_missing_fields_is_safe():
-    r = _parse_card("some text with no labelled fields")
+    r = _parse_card("some text with nothing structured")
     assert r.name == "Unknown"
-    assert r.id_number == "0000"
+    assert r.id_number == ""
+
+
+def test_parse_card_reference_code_last4():
+    r = _parse_card("Name: Khushal Vyas\nTest Reference: OCR-TEST-4827-1936\n")
+    assert r.name == "Khushal Vyas"
+    assert r.id_number.endswith("1936")
 
 
 def test_mask_id_keeps_only_last_four():

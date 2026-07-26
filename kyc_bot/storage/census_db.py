@@ -117,10 +117,20 @@ def counts() -> dict[str, int]:
 
 
 def set_status(record_id: int, status: str) -> bool:
+    """Move a record to a final status. Only *pending* records can change, so a
+    decision is locked once made (no further updates)."""
     if status not in _STATUSES:
         raise ValueError(f"invalid status: {status}")
     with _conn() as c:
         cur = c.execute(
-            "UPDATE census_records SET status = ? WHERE id = ?", (status, record_id)
+            "UPDATE census_records SET status = ? WHERE id = ? AND status = 'pending'",
+            (status, record_id),
         )
         return cur.rowcount > 0
+
+
+def clear_all() -> int:
+    """Delete every record (fresh start). Returns the number removed."""
+    with _conn() as c:
+        cur = c.execute("DELETE FROM census_records")
+        return cur.rowcount

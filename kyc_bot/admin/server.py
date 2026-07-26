@@ -52,12 +52,20 @@ def _row(r: dict) -> str:
     assets = ", ".join(r["assets"]) if r["assets"] else "—"
     review = "⚠️ review" if r["needs_review"] else "✓"
     match = f'{r["id_name_match"]:.0%}' if r["id_name_match"] is not None else "—"
-    actions = (
-        f'<form method="post" action="/records/{r["id"]}/approve" style="display:inline">'
-        f'<button class="ok">Approve</button></form> '
-        f'<form method="post" action="/records/{r["id"]}/reject" style="display:inline">'
-        f'<button class="no">Reject</button></form>'
+    # Liveness is "submitted" until an admin decides; "accepted" only on approval.
+    liveness_disp = {"approved": "accepted ✓", "rejected": "rejected ✗"}.get(
+        r["status"], e(r["liveness"])
     )
+    # Lock actions once a decision is made — no further updates allowed.
+    if r["status"] == "pending":
+        actions = (
+            f'<form method="post" action="/records/{r["id"]}/approve" style="display:inline">'
+            f'<button class="ok">Approve</button></form> '
+            f'<form method="post" action="/records/{r["id"]}/reject" style="display:inline">'
+            f'<button class="no">Reject</button></form>'
+        )
+    else:
+        actions = '<span class="dim">🔒 locked</span>'
     return (
         "<tr>"
         f"<td>{r['id']}</td>"
@@ -71,7 +79,7 @@ def _row(r: dict) -> str:
         f"<td>{e(assets)}</td>"
         f"<td class='dim'>{e(r['id_masked'])}</td>"
         f"<td>{e(r['id_name'])} <span class='dim'>({match})</span></td>"
-        f"<td>{e(r['liveness'])}</td>"
+        f"<td>{liveness_disp}</td>"
         f"<td>{review}</td>"
         f"<td>{_badge(r['status'])}</td>"
         f"<td>{actions}</td>"

@@ -110,9 +110,22 @@ def _parse_card(text: str) -> OcrResult:
     m = re.search(r"(?im)^\s*name\s*[:\-]\s*(.+?)\s*$", text)
     if m:
         name = re.sub(r"\s+", " ", m.group(1)).strip()
+
+    # ID: prefer a long digit run (Aadhaar-style), else fall back to a
+    # reference/ID/number-labelled value like "Test Reference: OCR-TEST-4827-1936"
+    # so the masked last-4 is meaningful (…1936) instead of the "0000" default.
     number = ""
     for chunk in re.findall(r"\d[\d ]{6,}\d", text):
         digits = re.sub(r"\D", "", chunk)
         if len(digits) > len(number):
             number = digits
-    return OcrResult(name=name or "Unknown", id_number=number or "0000", quality=0.9)
+    if not number:
+        m = re.search(
+            r"(?im)(?:reference|ref|number|no|epic|\bid)\b[^\n:]*[:\-]\s*"
+            r"([A-Za-z0-9][A-Za-z0-9 /\-]{3,})",
+            text,
+        )
+        if m:
+            number = re.sub(r"[^A-Za-z0-9]", "", m.group(1))
+
+    return OcrResult(name=name or "Unknown", id_number=number or "", quality=0.9)
