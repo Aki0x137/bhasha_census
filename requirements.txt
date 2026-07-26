@@ -1,4 +1,26 @@
-python-telegram-bot==21.6
-pytest==8.3.3
-pytest-asyncio==0.24.0
-ruff==0.6.9
+# Core API & schemas
+pydantic>=2.7,<3
+fastapi>=0.111,<1
+uvicorn[standard]>=0.30,<1
+python-multipart>=0.0.9
+
+# Temporal workflow engine
+temporalio>=1.7,<2
+
+# Telegram bot / channel layer
+python-telegram-bot>=21,<22
+
+# LangGraph + AWS Bedrock (CRT needed for AWS_BEARER_TOKEN_BEDROCK)
+langgraph>=0.2,<1
+boto3>=1.34,<2
+botocore[crt]>=1.34,<2
+
+# Utilities
+structlog>=24,<25
+python-dotenv>=1.0,<2
+httpx>=0.27,<1
+
+# Dev / test
+pytest>=8.3,<9
+pytest-asyncio>=0.24,<1
+ruff>=0.6,<1

@@ -1,0 +1,32 @@
+{
+  "job_id": "job_demo00001",
+  "session_id": "sess_demo0000001",
+  "locale": "en-IN",
+  "created_at_ms": 1721990400000,
+  "media": [
+    {
+      "media_id": "m_demo001",
+      "uri": "evidence/demo/sample_face.jpg",
+      "kind": "photo"
+    }
+  ],
+  "params": {
+    "challenge_id": "sess_demo0000001_c1",
+    "challenge_type": "LOOK_LEFT_RIGHT",
+    "prompt_text": "Look left then right",
+    "expected_response": "look_left_right",
+    "time_limit_ms": 15000,
+    "min_confidence": 0.65,
+    "max_attempts": 2,
+    "enabled_plugins": ["face_detector", "frame_quality", "pose_estimator", "spoof_detector"]
+  },
+  "targets": [
+    {
+      "target_id": "sess_demo0000001_c1_presence",
+      "kind": "presence",
+      "required": true,
+      "weight": 1.0,
+      "metadata": {}
+    }
+  ]
+}
