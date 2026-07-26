@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from kyc_bot.channels.base import (
     Attachment,
@@ -87,3 +87,10 @@ class TelegramChannel(MessagingChannel):
         tg_file = await self._bot.get_file(attachment.file_id)
         data = await tg_file.download_as_bytearray()
         return bytes(data)
+
+    async def send_webapp(self, user_id: str, text: str, label: str, url: str) -> None:
+        """Send a button that launches a Telegram Mini App (WebView) at `url`.
+        The URL must be public HTTPS. Used to open the liveness camera page."""
+        btn = InlineKeyboardButton(label, web_app=WebAppInfo(url=url))
+        markup = InlineKeyboardMarkup([[btn]])
+        await self._bot.send_message(chat_id=int(user_id), text=text, reply_markup=markup)
