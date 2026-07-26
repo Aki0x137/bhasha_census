@@ -18,29 +18,38 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Language/Version**: Python 3.11+ (typed) [or NEEDS CLARIFICATION if feature differs]
 
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
+**Primary Dependencies**: pip; Temporal; LangGraph; FastAPI; Pydantic shared schemas; Sarvam; AWS Bedrock; OpenCV/MediaPipe as needed
 
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+**Storage**: SQLite (session metadata) + local `evidence/` filesystem [S3 only if cloud mode justified]
 
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
+**Testing**: pytest (unit/policy/schema); integration for Temporal activities & adapters; e2e for challenge branches when in scope
 
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
+**Target Platform**: Linux and macOS local developer runtime (MVP)
 
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
+**Project Type**: Local-first web + API + Temporal workers (liveness verification MVP)
 
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
+**Performance Goals**: [domain-specific, e.g., interactive challenge latency, or NEEDS CLARIFICATION]
 
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
+**Constraints**: MVP-only scope; typed contracts at all boundaries; deterministic policy owns final verdict; dual-OS (Linux/macOS) local run
 
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Scale/Scope**: Single-machine MVP; not production identity proofing [refine per feature]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Verify against `.specify/memory/constitution.md` (Bhasaha Census Constitution):
+
+- [ ] **MVP-only**: Change maps to MVP acceptance criteria; no out-of-scope production/biometric/fraud-graph work
+- [ ] **Linux/macOS local-first**: Feature remains runnable locally on Linux or macOS (cloud APIs allowed)
+- [ ] **Typed contracts**: Cross-service/API payloads use shared type-safe Python schemas (no untyped boundary dicts)
+- [ ] **Layered architecture**: Extraction, scoring, and decision stay separated; services stateless except session store
+- [ ] **Deterministic final authority**: Policy engine owns PASS/REVIEW/FAIL; LangGraph/Bedrock are not sole source of truth
+- [ ] **Multi-signal evidence**: Verdict fuses independent branches with reason codes and evidence ids
+- [ ] **Privacy/observability**: Consent, retention, redaction, and structured session/challenge logging addressed if media/PII touched
+- [ ] **Stack alignment**: Python + pip + Temporal + LangGraph (and documented MVP deps) unless Complexity Tracking justifies an exception
 
 ## Project Structure
 
@@ -58,46 +67,33 @@ specs/[###-feature]/
 
 ### Source Code (repository root)
 <!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
+  ACTION REQUIRED: Prefer the MVP layout below (constitution + docs/liveliness_check_mvp.md).
+  Expand with real paths for this feature; remove unused branches. Do not leave Option labels.
 -->
 
 ```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
-
+apps/
+├── web/                 # React/Next.js client (webcam, mic, challenges)
+└── api/                 # FastAPI session/challenge API
+services/
+├── video/               # face/liveness/spoof workers
+├── speech/              # Sarvam STT integration
+├── document/            # Sarvam document digitization
+├── orchestrator/        # LangGraph + Bedrock aggregation
+└── policy/              # deterministic verdict rules
+shared/
+├── schemas/             # type-safe Python contracts (Pydantic)
+├── utils/
+└── prompts/
+infra/
+├── local/               # Temporal, local run scripts (Linux/macOS)
+└── aws/                 # optional cloud mode later
 tests/
-├── contract/
+├── unit/
 ├── integration/
-└── unit/
-
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
+└── e2e/
+evidence/                # local evidence snapshots (gitignored in real use)
+docs/
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real

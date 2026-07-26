@@ -129,3 +129,24 @@
 - [Assumption about scope boundaries, e.g., "Mobile support is out of scope for v1"]
 - [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
 - [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+
+## Out of Scope *(mandatory for MVP alignment)*
+
+<!--
+  List explicit non-goals. Align with Bhasaha Census Constitution and
+  docs/liveliness_check_mvp.md (e.g. production IdP, certified biometrics,
+  fraud graphs, post-session continuous monitoring, custom model training).
+-->
+
+- [Non-goal 1]
+- [Non-goal 2]
+
+## Privacy & Consent *(mandatory if feature captures camera, mic, or documents)*
+
+<!--
+  Required when media or document PII is involved. Otherwise note N/A.
+-->
+
+- Consent before capture: [describe or N/A]
+- Retention of raw media: [describe or N/A]
+- Redaction / session-scoped storage: [describe or N/A]

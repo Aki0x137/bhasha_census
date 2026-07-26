@@ -21,10 +21,10 @@ description: "Task list template for feature implementation"
 
 ## Path Conventions
 
-- **Single project**: `src/`, `tests/` at repository root
-- **Web app**: `backend/src/`, `frontend/src/`
-- **Mobile**: `api/src/`, `ios/src/` or `android/src/`
-- Paths shown below assume single project - adjust based on plan.md structure
+- **MVP (preferred)**: `apps/web/`, `apps/api/`, `services/{video,speech,document,orchestrator,policy}/`, `shared/schemas/`, `infra/local/`, `tests/{unit,integration,e2e}/`, `evidence/`
+- **Contracts**: typed Python schemas in `shared/schemas/` (Pydantic); Temporal workflows/activities and LangGraph nodes MUST consume those types
+- **Legacy single project**: `src/`, `tests/` at repository root (only if plan.md explicitly chooses it)
+- Paths in sample tasks below are illustrative — replace with plan.md paths
 
 <!--
   ============================================================================
@@ -63,12 +63,12 @@ description: "Task list template for feature implementation"
 
 Examples of foundational tasks (adjust based on your project):
 
-- [ ] T004 Setup database schema and migrations framework
-- [ ] T005 [P] Implement authentication/authorization framework
-- [ ] T006 [P] Setup API routing and middleware structure
-- [ ] T007 Create base models/entities that all stories depend on
-- [ ] T008 Configure error handling and logging infrastructure
-- [ ] T009 Setup environment configuration management
+- [ ] T004 Define shared typed contracts (session, challenge, evidence, verdict) in `shared/schemas/`
+- [ ] T005 Setup SQLite session persistence and local `evidence/` store
+- [ ] T006 [P] Setup FastAPI routing and middleware in `apps/api/`
+- [ ] T007 [P] Bootstrap Temporal worker/workflow skeleton and LangGraph entrypoints
+- [ ] T008 Configure structured logging and explicit error handlers (MVP failure modes)
+- [ ] T009 Setup environment configuration (Linux/macOS local run via pip)
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
