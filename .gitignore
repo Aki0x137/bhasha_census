@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# KYC bot — never commit secrets, keys, or captured PII
+*.key
+KYC_MASTER_KEY*
+vault/
+data/
+*.sqlite
+*.sqlite3
