@@ -1,58 +1,666 @@
 <!doctype html>
 <!--
-  Liveness Mini App — SEAM for the video/liveness teammate.
-
-  This is a minimal Telegram Mini App that opens the camera inside the bot's
-  WebView. It intentionally does NOT implement real liveness detection — that is
-  owned by the video-intelligence track (MediaPipe blink/pose, spoof/replay).
-  Wire that here, then POST the result to your backend keyed by the Telegram user
-  (validate Telegram.WebApp.initData server-side via HMAC with the bot token).
-
-  Serve this over PUBLIC HTTPS (e.g. `cloudflared tunnel --url http://localhost:8000`)
-  and set WEBAPP_URL in .env to its URL so the bot's button opens it.
-  Camera in Telegram WebView is reliable on Desktop/Android; test iOS early.
+  Bhasaha Census – Liveness Challenge Page
+  Works standalone at http://localhost:8000/liveness OR as a Telegram Mini App.
+  Captures webcam frames → POSTs to /video/verify-live → shows full pipeline report.
 -->
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Liveness Check – Bhasaha Census</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <title>Liveness Check</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; text-align: center; }
-    video { width: 100%; max-width: 360px; border-radius: 12px; background: #000; }
-    button { margin-top: 16px; padding: 12px 20px; font-size: 16px; border-radius: 10px;
-             border: none; background: #5b8def; color: #fff; }
-    #status { margin-top: 12px; min-height: 24px; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --accent: #5b8def;
+      --accent2: #7c5bef;
+      --green: #2ecc71;
+      --red: #e74c3c;
+      --amber: #f39c12;
+      --text: #e8eaf0;
+      --muted: #8890a8;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 16px 40px;
+    }
+
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    /* Challenge picker */
+    .challenge-picker {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .chip {
+      padding: 8px 16px;
+      border-radius: 999px;
+      border: 2px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chip.selected {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(91,141,239,0.12);
+    }
+
+    /* Camera container */
+    .cam-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 3/4;
+      margin-bottom: 18px;
+      border: 2px solid var(--border);
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror */
+      display: block;
+    }
+
+    canvas#capture-canvas { display: none; }
+
+    .cam-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 16px;
+      background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+    }
+
+    .challenge-label {
+      font-size: 1rem;
+      font-weight: 600;
+      text-align: center;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-wrap {
+      width: 100%;
+      height: 6px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.1s linear;
+      width: 0%;
+    }
+
+    .cam-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      gap: 10px;
+    }
+    .cam-placeholder svg { opacity: 0.3; }
+
+    /* Buttons */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 12px 28px;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    #btn-start {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+    }
+    #btn-start:disabled { opacity: 0.4; cursor: not-allowed; }
+    #btn-start:not(:disabled):hover { filter: brightness(1.15); }
+
+    #btn-retake {
+      background: var(--surface);
+      color: var(--muted);
+      border: 2px solid var(--border);
+      display: none;
+    }
+    #btn-retake:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Status pill */
+    #status {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+      min-height: 20px;
+      text-align: center;
+    }
+
+    /* Results card */
+    #results {
+      width: 100%;
+      max-width: 480px;
+      display: none;
+    }
+
+    .result-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 14px;
+    }
+
+    .verdict-banner {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .verdict-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      flex-shrink: 0;
+    }
+    .verdict-icon.pass { background: rgba(46,204,113,0.15); }
+    .verdict-icon.fail { background: rgba(231,76,60,0.15); }
+
+    .verdict-text h2 { font-size: 1.2rem; margin-bottom: 4px; }
+    .verdict-text p { font-size: 0.82rem; color: var(--muted); }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .score-item {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 12px;
+    }
+
+    .score-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .score-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+    .score-value.good { color: var(--green); }
+    .score-value.warn { color: var(--amber); }
+    .score-value.bad  { color: var(--red); }
+
+    .section-title {
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .reason-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .tag {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(91,141,239,0.12);
+      color: var(--accent);
+      border: 1px solid rgba(91,141,239,0.3);
+    }
+    .tag.bad {
+      background: rgba(231,76,60,0.12);
+      color: var(--red);
+      border-color: rgba(231,76,60,0.3);
+    }
+
+    .plugin-list { display: flex; flex-direction: column; gap: 6px; }
+
+    .plugin-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-radius: 8px;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.ok  { background: var(--green); }
+    .dot.err { background: var(--red); }
+
+    .plugin-name { font-size: 0.82rem; flex: 1; }
+    .plugin-dur  { font-size: 0.75rem; color: var(--muted); }
+
+    .frame-thumb-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .frame-thumb {
+      width: 60px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 6px;
+      border: 2px solid var(--border);
+    }
+
+    .evidence-id {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 12px;
+      font-family: monospace;
+    }
   </style>
 </head>
 <body>
-  <h3>Liveness check</h3>
-  <p>Look at the camera and follow the prompt.</p>
+
+<h1>Liveness Check</h1>
+<p class="subtitle">Real-time identity presence verification</p>
+
+<!-- Challenge selector -->
+<div class="challenge-picker">
+  <div class="chip selected" data-ct="LOOK_LEFT_RIGHT">👀 Look Left / Right</div>
+  <div class="chip" data-ct="BLINK_TWICE">👁 Blink Twice</div>
+  <div class="chip" data-ct="SMILE_AND_TILT">😊 Smile &amp; Tilt</div>
+</div>
+
+<!-- Camera -->
+<div class="cam-wrap" id="cam-wrap">
   <video id="cam" autoplay playsinline muted></video>
-  <div id="status">Requesting camera…</div>
-  <button id="done" disabled>Done</button>
+  <canvas id="capture-canvas"></canvas>
+  <div class="cam-placeholder" id="cam-placeholder">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg>
+    <span>Camera will open when you start</span>
+  </div>
+  <div class="cam-overlay" id="cam-overlay" style="display:none">
+    <div class="challenge-label" id="challenge-label"></div>
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" id="progress-fill"></div>
+    </div>
+  </div>
+</div>
 
-  <script>
-    const tg = window.Telegram ? window.Telegram.WebApp : null;
-    if (tg) { tg.ready(); tg.expand(); }
-    const status = document.getElementById('status');
-    const doneBtn = document.getElementById('done');
+<!-- Captured frame thumbnails -->
+<div class="frame-thumb-row" id="frame-thumbs"></div>
 
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
-      .then((stream) => {
-        document.getElementById('cam').srcObject = stream;
-        status.textContent = 'Camera active. (TODO: run real liveness challenge here.)';
-        doneBtn.disabled = false;
-      })
-      .catch((err) => { status.textContent = 'Camera error: ' + err.message; });
+<p id="status">Pick a challenge, then press Start.</p>
 
-    doneBtn.addEventListener('click', () => {
-      // TODO(video track): replace with real liveness result, then POST to backend
-      // with tg.initData for verification. For now, just close the Mini App.
-      status.textContent = 'Liveness recorded.';
-      if (tg) tg.close();
+<div class="btn-row">
+  <button id="btn-start">▶ Start Challenge</button>
+  <button id="btn-retake">↺ Retake</button>
+</div>
+
+<!-- Results -->
+<div id="results"></div>
+
+<script>
+  // ── Telegram Mini App init ──────────────────────────────────────────────
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+
+  // ── State ───────────────────────────────────────────────────────────────
+  const CHALLENGES = {
+    LOOK_LEFT_RIGHT: {
+      label: '↔  Slowly turn your head left… then right',
+      durationMs: 5000,
+    },
+    BLINK_TWICE: {
+      label: '👁  Blink twice, slowly and clearly',
+      durationMs: 4000,
+    },
+    SMILE_AND_TILT: {
+      label: '😊  Smile and tilt your head slightly',
+      durationMs: 3500,
+    },
+  };
+
+  let selectedChallenge = 'LOOK_LEFT_RIGHT';
+  let stream = null;
+  let capturedBlobs = [];
+
+  // ── DOM refs ────────────────────────────────────────────────────────────
+  const video       = document.getElementById('cam');
+  const canvas      = document.getElementById('capture-canvas');
+  const overlay     = document.getElementById('cam-overlay');
+  const placeholder = document.getElementById('cam-placeholder');
+  const challengeLabel = document.getElementById('challenge-label');
+  const progressFill   = document.getElementById('progress-fill');
+  const statusEl    = document.getElementById('status');
+  const btnStart    = document.getElementById('btn-start');
+  const btnRetake   = document.getElementById('btn-retake');
+  const thumbRow    = document.getElementById('frame-thumbs');
+  const resultsDiv  = document.getElementById('results');
+
+  // ── Challenge picker ────────────────────────────────────────────────────
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+      selectedChallenge = chip.dataset.ct;
     });
-  </script>
+  });
+
+  // ── Camera helpers ──────────────────────────────────────────────────────
+  async function startCamera() {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    video.srcObject = stream;
+    await video.play();
+    placeholder.style.display = 'none';
+  }
+
+  function stopCamera() {
+    stream?.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+
+  function captureFrame() {
+    return new Promise(resolve => {
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      // un-mirror when capturing (flip back)
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
+      canvas.toBlob(resolve, 'image/jpeg', 0.88);
+    });
+  }
+
+  // ── Main challenge flow ─────────────────────────────────────────────────
+  btnStart.addEventListener('click', runChallenge);
+  btnRetake.addEventListener('click', () => {
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+    thumbRow.innerHTML = '';
+    capturedBlobs = [];
+    btnRetake.style.display = 'none';
+    btnStart.disabled = false;
+    statusEl.textContent = 'Pick a challenge, then press Start.';
+    placeholder.style.display = 'flex';
+    overlay.style.display = 'none';
+    document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = '');
+    stopCamera();
+  });
+
+  async function runChallenge() {
+    const cfg = CHALLENGES[selectedChallenge];
+    btnStart.disabled = true;
+    document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = 'none');
+    capturedBlobs = [];
+    thumbRow.innerHTML = '';
+    resultsDiv.style.display = 'none';
+    resultsDiv.innerHTML = '';
+
+    statusEl.textContent = 'Opening camera…';
+    try {
+      await startCamera();
+    } catch (err) {
+      statusEl.textContent = '⚠ Camera error: ' + err.message;
+      btnStart.disabled = false;
+      document.querySelectorAll('.chip').forEach(c => c.style.pointerEvents = '');
+      return;
+    }
+
+    // Brief ready pause
+    await sleep(600);
+
+    challengeLabel.textContent = cfg.label;
+    overlay.style.display = 'flex';
+    progressFill.style.width = '0%';
+
+    statusEl.textContent = 'Capturing frames…';
+
+    const FRAMES = 6;
+    const interval = cfg.durationMs / FRAMES;
+    const startTime = performance.now();
+
+    for (let i = 0; i < FRAMES; i++) {
+      await sleep(interval);
+      const blob = await captureFrame();
+      if (blob) {
+        capturedBlobs.push(blob);
+        addThumb(blob, i);
+      }
+      const elapsed = performance.now() - startTime;
+      progressFill.style.width = Math.min(100, (elapsed / cfg.durationMs) * 100) + '%';
+    }
+    progressFill.style.width = '100%';
+
+    overlay.style.display = 'none';
+    stopCamera();
+    placeholder.style.display = 'none';
+
+    if (capturedBlobs.length === 0) {
+      statusEl.textContent = '⚠ No frames captured.';
+      btnStart.disabled = false;
+      return;
+    }
+
+    statusEl.textContent = `Analysing ${capturedBlobs.length} frames…`;
+    await submitFrames();
+  }
+
+  function addThumb(blob, idx) {
+    const url = URL.createObjectURL(blob);
+    const img = document.createElement('img');
+    img.className = 'frame-thumb';
+    img.src = url;
+    img.title = `Frame ${idx + 1}`;
+    thumbRow.appendChild(img);
+  }
+
+  // ── API call ─────────────────────────────────────────────────────────────
+  async function submitFrames() {
+    const fd = new FormData();
+    fd.append('challenge_type', selectedChallenge);
+    capturedBlobs.forEach((blob, i) => {
+      fd.append('frames', blob, `frame_${String(i).padStart(2,'0')}.jpg`);
+    });
+
+    let data;
+    try {
+      const resp = await fetch('/video/verify-live', { method: 'POST', body: fd });
+      if (!resp.ok) {
+        const err = await resp.text();
+        statusEl.textContent = `⚠ Server error (${resp.status}): ${err.slice(0, 120)}`;
+        btnRetake.style.display = 'inline-block';
+        return;
+      }
+      data = await resp.json();
+    } catch (err) {
+      statusEl.textContent = '⚠ Network error: ' + err.message;
+      btnRetake.style.display = 'inline-block';
+      return;
+    }
+
+    statusEl.textContent = '';
+    btnRetake.style.display = 'inline-block';
+    renderResults(data);
+
+    // Telegram Mini App: send result back to bot
+    if (tg) {
+      const verdict = data.scores?.hard_fail_hint ? 'FAIL' : 'PASS';
+      tg.sendData(JSON.stringify({ verdict, evidence_id: data.evidence_id }));
+    }
+  }
+
+  // ── Results renderer ─────────────────────────────────────────────────────
+  function renderResults(ev) {
+    const s = ev.scores || {};
+    const passed = !s.hard_fail_hint;
+
+    const faceCount  = s.face_count ?? 0;
+    const quality    = typeof s.quality_score === 'number' ? s.quality_score : null;
+    const spoof      = typeof s.spoof_score   === 'number' ? s.spoof_score   : null;
+    const poseMatch  = typeof s.pose_match_score === 'number' ? s.pose_match_score : null;
+    const blinkScore = typeof s.blink_count === 'number' ? s.blink_count : null;
+
+    function scoreClass(val, goodThresh, badThresh) {
+      if (val === null) return '';
+      if (val >= goodThresh) return 'good';
+      if (val >= badThresh)  return 'warn';
+      return 'bad';
+    }
+
+    const reasons = ev.reason_codes || [];
+    const badReasons = new Set(['FACE_MISSING','QUALITY_LOW','MULTI_FACE','SPOOF_SUSPECT','REPLAY_SUSPECT','CHALLENGE_POSE_FAIL']);
+
+    const plugins = ev.plugin_results || [];
+
+    const scoreItems = [
+      { label: 'Face detected', value: faceCount > 0 ? '✓ Yes' : '✗ No', cls: faceCount > 0 ? 'good' : 'bad' },
+      { label: 'Face count',    value: faceCount,                          cls: faceCount === 1 ? 'good' : faceCount === 0 ? 'bad' : 'warn' },
+      quality  !== null ? { label: 'Quality',    value: pct(quality),    cls: scoreClass(quality,  0.6, 0.4) } : null,
+      spoof    !== null ? { label: 'Spoof risk',  value: pct(spoof),      cls: scoreClass(1-spoof,  0.5, 0.3) } : null,
+      poseMatch!== null ? { label: 'Pose match',  value: pct(poseMatch),  cls: scoreClass(poseMatch,0.6, 0.4) } : null,
+      blinkScore!== null? { label: 'Blink count', value: blinkScore,      cls: blinkScore >= 2 ? 'good' : 'warn' } : null,
+    ].filter(Boolean);
+
+    resultsDiv.innerHTML = `
+      <div class="result-card">
+        <div class="verdict-banner">
+          <div class="verdict-icon ${passed ? 'pass' : 'fail'}">${passed ? '✅' : '❌'}</div>
+          <div class="verdict-text">
+            <h2>${passed ? 'Liveness Passed' : 'Liveness Failed'}</h2>
+            <p>evidence_id: <code>${ev.evidence_id || '—'}</code></p>
+          </div>
+        </div>
+
+        <div class="score-grid">
+          ${scoreItems.map(si => `
+            <div class="score-item">
+              <div class="score-label">${si.label}</div>
+              <div class="score-value ${si.cls}">${si.value}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="section-title">Reason codes</div>
+        <div class="reason-tags">
+          ${reasons.length
+            ? reasons.map(r => `<span class="tag ${badReasons.has(r) ? 'bad' : ''}">${r}</span>`).join('')
+            : '<span class="tag">none</span>'}
+        </div>
+
+        <div class="section-title">Plugins (${plugins.length})</div>
+        <div class="plugin-list">
+          ${plugins.map(p => `
+            <div class="plugin-row">
+              <div class="dot ${p.ok ? 'ok' : 'err'}"></div>
+              <div class="plugin-name">${p.plugin_name} <span style="color:var(--muted);font-size:0.72rem">v${p.plugin_version || '?'}</span></div>
+              <div class="plugin-dur">${p.duration_ms ?? '?'}ms</div>
+            </div>
+          `).join('')}
+        </div>
+
+        ${ev.targets_evaluation?.length ? `
+          <div class="section-title" style="margin-top:16px">Targets</div>
+          <div class="plugin-list">
+            ${ev.targets_evaluation.map(t => `
+              <div class="plugin-row">
+                <div class="dot ${t.status === 'PASSED' ? 'ok' : t.status === 'SKIPPED' ? '' : 'err'}" style="${t.status === 'SKIPPED' ? 'background:var(--muted)' : ''}"></div>
+                <div class="plugin-name">${t.target_id}</div>
+                <div class="plugin-dur">${t.status}${t.detail ? ' · ' + t.detail : ''}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="evidence-id">job_id: ${ev.job_id || '—'} · session: ${ev.session_id || '—'}</div>
+      </div>
+    `;
+    resultsDiv.style.display = 'block';
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function pct(v)    { return (v * 100).toFixed(0) + '%'; }
+</script>
 </body>
 </html>

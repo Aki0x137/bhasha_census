@@ -11,7 +11,7 @@ from apps.telegram.i18n.messages import get_message
 from apps.telegram.services.job_builder import build_video_job
 from services.video import plugins  # noqa: F401
 from services.video.pipeline import run_verification_job
-from shared.schemas.common import ChallengeType, MediaKind, SessionStatus, ReasonCode
+from shared.schemas.common import ChallengeType, ReasonCode
 from shared.utils.evidence_paths import session_video_dir
 from shared.utils.logging import get_logger
 
@@ -81,20 +81,31 @@ async def _run_presence_challenge(update: Update, context: ContextTypes.DEFAULT_
     attempts = context.user_data.get(attempts_key, 0) + 1
     context.user_data[attempts_key] = attempts
     max_attempts = job.params.max_attempts
+    temp_verify = bool(context.user_data.get("temp_verify"))
+
+    async def _reply_outcome(default_text: str) -> None:
+        if temp_verify:
+            from apps.telegram.handlers.verify import format_verify_report
+
+            await update.message.reply_text(format_verify_report(evidence), parse_mode="Markdown")
+        else:
+            await update.message.reply_text(default_text)
 
     # Multi-face check (M6)
     if ReasonCode.MULTI_FACE.value in evidence.reason_codes:
-        if attempts < max_attempts:
+        if attempts < max_attempts and not temp_verify:
             await update.message.reply_text(get_message("challenge_multi_face", locale))
         else:
             challenge_item.completed = True
             challenge_item.outcome = "failed"
             update_session(sess)
-            await update.message.reply_text(get_message("challenge_failed", locale))
+            await _reply_outcome(get_message("challenge_failed", locale))
+            if temp_verify:
+                context.user_data.pop("temp_verify", None)
         return
 
     if evidence.scores.hard_fail_hint:
-        if attempts < max_attempts:
+        if attempts < max_attempts and not temp_verify:
             await update.message.reply_text(
                 get_message("challenge_retry", locale, attempts_left=max_attempts - attempts)
             )
@@ -102,12 +113,16 @@ async def _run_presence_challenge(update: Update, context: ContextTypes.DEFAULT_
             challenge_item.completed = True
             challenge_item.outcome = "failed"
             update_session(sess)
-            await update.message.reply_text(get_message("challenge_failed", locale))
+            await _reply_outcome(get_message("challenge_failed", locale))
+            if temp_verify:
+                context.user_data.pop("temp_verify", None)
     else:
         challenge_item.completed = True
         challenge_item.outcome = "passed"
         update_session(sess)
-        await update.message.reply_text(get_message("challenge_passed", locale))
+        await _reply_outcome(get_message("challenge_passed", locale))
+        if temp_verify:
+            context.user_data.pop("temp_verify", None)
         logger.info("challenge_passed", session_id=session_id, challenge_id=challenge_item.challenge_id)
 
 
