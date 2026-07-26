@@ -16,6 +16,7 @@ from apps.telegram.handlers.presence_challenge import (
 from apps.telegram.handlers.speech_challenge import voice_handler
 from apps.telegram.handlers.document_capture import document_handler
 from apps.telegram.handlers.finalize import finalize_handler
+from apps.telegram.handlers.verify import verify_handler
 from shared.utils.logging import configure_logging, get_logger
 
 configure_logging()
@@ -28,6 +29,8 @@ def build_app() -> Application:
 
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("done", finalize_handler))
+    # TEMP: skip enrollment and smoke-test video pipeline E2E
+    app.add_handler(CommandHandler("verify", verify_handler))
     # Text message router (consent → census → generic)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, _text_router))
     # Media handlers
