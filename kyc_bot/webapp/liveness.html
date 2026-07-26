@@ -1,0 +1,58 @@
+<!doctype html>
+<!--
+  Liveness Mini App — SEAM for the video/liveness teammate.
+
+  This is a minimal Telegram Mini App that opens the camera inside the bot's
+  WebView. It intentionally does NOT implement real liveness detection — that is
+  owned by the video-intelligence track (MediaPipe blink/pose, spoof/replay).
+  Wire that here, then POST the result to your backend keyed by the Telegram user
+  (validate Telegram.WebApp.initData server-side via HMAC with the bot token).
+
+  Serve this over PUBLIC HTTPS (e.g. `cloudflared tunnel --url http://localhost:8000`)
+  and set WEBAPP_URL in .env to its URL so the bot's button opens it.
+  Camera in Telegram WebView is reliable on Desktop/Android; test iOS early.
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <title>Liveness Check</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; text-align: center; }
+    video { width: 100%; max-width: 360px; border-radius: 12px; background: #000; }
+    button { margin-top: 16px; padding: 12px 20px; font-size: 16px; border-radius: 10px;
+             border: none; background: #5b8def; color: #fff; }
+    #status { margin-top: 12px; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h3>Liveness check</h3>
+  <p>Look at the camera and follow the prompt.</p>
+  <video id="cam" autoplay playsinline muted></video>
+  <div id="status">Requesting camera…</div>
+  <button id="done" disabled>Done</button>
+
+  <script>
+    const tg = window.Telegram ? window.Telegram.WebApp : null;
+    if (tg) { tg.ready(); tg.expand(); }
+    const status = document.getElementById('status');
+    const doneBtn = document.getElementById('done');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .then((stream) => {
+        document.getElementById('cam').srcObject = stream;
+        status.textContent = 'Camera active. (TODO: run real liveness challenge here.)';
+        doneBtn.disabled = false;
+      })
+      .catch((err) => { status.textContent = 'Camera error: ' + err.message; });
+
+    doneBtn.addEventListener('click', () => {
+      // TODO(video track): replace with real liveness result, then POST to backend
+      // with tg.initData for verification. For now, just close the Mini App.
+      status.textContent = 'Liveness recorded.';
+      if (tg) tg.close();
+    });
+  </script>
+</body>
+</html>
