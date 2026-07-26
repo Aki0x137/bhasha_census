@@ -14,6 +14,7 @@ def test_stored_file_is_not_plaintext(tmp_path):
     key = Fernet.generate_key()
     vault = Vault(root=tmp_path / "vault", key=key)
     path = vault.store("epic_abc", b"PLAINTEXT-MARKER")
+    assert path == str(tmp_path / "vault" / "epic_abc.enc")
     on_disk = (tmp_path / "vault" / "epic_abc.enc").read_bytes()
     assert b"PLAINTEXT-MARKER" not in on_disk
 
