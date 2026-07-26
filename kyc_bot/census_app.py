@@ -31,6 +31,7 @@ from kyc_bot.channels.telegram import TelegramChannel, normalize_update
 from kyc_bot.flow.actions import RequestPhoto, SendButtons, SendText, SendWebApp
 from kyc_bot.flow.engine import OcrAnswer, QuestionnaireEngine
 from kyc_bot.flow.session import InMemorySessionStore
+from kyc_bot.storage import census_db
 from kyc_bot.verification.ocr import (
     FakeDocProvider,
     SarvamDocProvider,
@@ -136,11 +137,23 @@ async def on_update(update: Update, context) -> None:
         actions = _engine.submit(session, text=msg.text)
 
     _store.save(session)
+
+    # Persist the completed record once, for the admin approval queue.
+    done = _engine.current(session) is None
+    if done and session.record.consent and not session.declined and not session.saved:
+        try:
+            rid = census_db.insert_record(session.record, user_id=msg.user_id)
+            session.saved = True
+            log.info("census record persisted (id=%s)", rid)
+        except Exception as exc:  # noqa: BLE001 - persistence must not break the chat
+            log.warning("failed to persist census record: %s", exc)
+
     await _render(channel, msg.user_id, actions)
 
 
 def main() -> None:
     _load_dotenv()
+    census_db.init_db()
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     app = Application.builder().token(token).build()
     app.bot_data["doc_provider"] = _doc_provider()

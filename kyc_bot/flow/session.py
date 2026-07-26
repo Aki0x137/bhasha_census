@@ -19,6 +19,7 @@ class Session:
     multi_buffer: list[str] = field(default_factory=list)
     awaiting_confirm: bool = False            # inside the id-card name-confirm sub-step
     declined: bool = False
+    saved: bool = False                       # record persisted to SQLite (once, on completion)
     webapp_url: Optional[str] = None          # https URL of the liveness Mini App
 
 
