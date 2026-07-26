@@ -9,4 +9,5 @@ Local-first MVP for video liveness and human-vs-AI media verification
 
 **Stack (constitution)**: Python + pip, Temporal, LangGraph, typed Pydantic
 contracts, FastAPI, Sarvam (speech/docs), AWS Bedrock (orchestration),
-local video workers, SQLite + filesystem evidence.
+local video workers, SQLite + filesystem evidence. 
+test
