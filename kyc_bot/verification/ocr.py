@@ -5,20 +5,23 @@
                        used to *surface a confirmation to the enumerator* — never to
                        auto-reject anyone.
 - `FakeDocProvider`  : offline default; deterministic, keeps the demo alive.
-- `SarvamDocProvider`: real Sarvam Doc-AI (best-effort) with a Fake fallback so a
-                       network/API hiccup can never crash the live demo.
+- `SarvamDocProvider`: real Sarvam Doc-AI via the official SDK — actually reads the
+                       uploaded card — with a Fake fallback so a network/API hiccup
+                       can never crash the live demo.
 """
 from __future__ import annotations
 
+import asyncio
 import difflib
 import logging
 import re
+import tempfile
+import zipfile
+from pathlib import Path
 
 from kyc_bot.verification.base import DocProvider, OcrResult
 
 log = logging.getLogger(__name__)
-
-SARVAM_BASE = "https://api.sarvam.ai"
 
 
 def mask_id(raw: str) -> str:
@@ -54,38 +57,62 @@ class FakeDocProvider(DocProvider):
 
 
 class SarvamDocProvider(DocProvider):
-    """Real Sarvam Doc-AI. Attempts the document-digitization call; on any error
-    it falls back to the Fake result and logs a warning (demo stays up)."""
+    """Real Sarvam Doc-AI via the official SDK. Runs the async digitization job
+    (create -> upload -> start -> poll -> download markdown) and parses the name +
+    ID number off the card. Falls back to the sample on any error/timeout so a live
+    demo never crashes."""
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, language: str = "en-IN", timeout: float = 90.0) -> None:
         self._key = api_key
+        self._language = language
+        self._timeout = timeout
         self._fallback = FakeDocProvider()
 
     async def digitize(self, image: bytes) -> OcrResult:
         try:
-            return await self._call_sarvam(image)
+            # SDK calls are blocking; run them off the event loop.
+            return await asyncio.to_thread(self._run, image)
         except Exception as exc:  # noqa: BLE001 - demo must never crash on OCR
             log.warning("Sarvam Doc-AI failed (%s); falling back to sample OCR.", exc)
             return await self._fallback.digitize(image)
 
-    async def _call_sarvam(self, image: bytes) -> OcrResult:
-        # httpx ships transitively with python-telegram-bot; imported lazily so a
-        # missing extra never breaks imports for the Fake path.
-        import httpx
+    def _run(self, image: bytes) -> OcrResult:
+        from sarvamai import SarvamAI
 
-        headers = {"api-subscription-key": self._key, "Content-Type": "application/json"}
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Verified contract (2026-07-26): 202 -> {job_id, storage_container_type, job_state}.
-            resp = await client.post(
-                f"{SARVAM_BASE}/doc-digitization/job/v1",
-                headers=headers,
-                json={"job_parameters": {"language": "en-IN", "output_format": "md"}},
+        client = SarvamAI(api_subscription_key=self._key)
+        with tempfile.TemporaryDirectory() as tmp:
+            # Match the file extension to the actual bytes, or Sarvam rejects it
+            # as a corrupted image (Telegram sends JPEG; uploads may be PNG).
+            suffix = ".png" if image[:4] == b"\x89PNG" else ".jpg"
+            img_path = Path(tmp) / f"card{suffix}"
+            img_path.write_bytes(image)
+            job = client.document_intelligence.create_job(
+                language=self._language, output_format="md"
             )
-            resp.raise_for_status()
-            job_id = resp.json().get("job_id")
-        # The job is async: the image must be uploaded to the returned storage
-        # container, the job polled to Completed, then the .md downloaded + parsed.
-        # That upload/poll/parse round-trip is not wired (and is not demo-safe live),
-        # so we fall back to the sample extraction while keeping the real call above.
-        log.info("Sarvam Doc-AI job accepted (%s); upload/poll not wired — using sample.", job_id)
-        return await self._fallback.digitize(image)
+            job.upload_file(str(img_path))
+            job.start()
+            job.wait_until_complete(poll_interval=2.0, timeout=self._timeout)
+            zip_path = Path(tmp) / "out.zip"
+            job.download_output(str(zip_path))
+            text = ""
+            with zipfile.ZipFile(zip_path) as z:
+                for name in z.namelist():
+                    if name.endswith((".md", ".txt")):
+                        text += z.read(name).decode("utf-8", "ignore") + "\n"
+        result = _parse_card(text)
+        log.info("Sarvam Doc-AI read card: name=%r id=***%s", result.name, result.id_number[-4:])
+        return result
+
+
+def _parse_card(text: str) -> OcrResult:
+    """Pull a name and an ID number out of the OCR markdown text."""
+    name = ""
+    m = re.search(r"(?im)^\s*name\s*[:\-]\s*(.+?)\s*$", text)
+    if m:
+        name = re.sub(r"\s+", " ", m.group(1)).strip()
+    number = ""
+    for chunk in re.findall(r"\d[\d ]{6,}\d", text):
+        digits = re.sub(r"\D", "", chunk)
+        if len(digits) > len(number):
+            number = digits
+    return OcrResult(name=name or "Unknown", id_number=number or "0000", quality=0.9)
